@@ -2,7 +2,7 @@ var Parser = (function() {
 
   // ====== 通用：从文本中解析题目-答案对 ======
   function parseTextToQA(text, sourceName) {
-    var lines = text.split(/\n/).map(function(l) { return l.trim(); }).filter(function(l) { return l.length > 5; });
+    var lines = text.split(/\n/).map(function(l) { return l.trim(); }).filter(function(l) { return l.length > 1; });
     var results = [];
 
     // 策略1: "题目：xxx 答案：A" 格式
@@ -11,12 +11,28 @@ var Parser = (function() {
     var pattern2 = /^\s*(\d+)[\.、\)]\s*(.+?)\s+([A-D√×对错正确错误])\s*$/;
     // 策略3: "1.A  2.B  3.C" 纯答案序列
     var pattern3 = /^\s*(\d+)\s*[\.、\)]\s*([A-D√×对错正确错误])\s*$/;
+    // 策略4: "xxx（A）" — 答案在题目末尾括号内 (如 "何俊测试的第二时间（A）")
+    var pattern4 = /^(.+?)（([A-D√×对错正确错误]+)）\s*$/;
+    // 策略5: "A、今天（正确答案）" — 正确选项标注了"正确答案"
+    var pattern5 = /^([A-D])[、\.]\s*.+?（(?:正确|答案|√|对)/i;
 
     for (var i = 0; i < lines.length; i++) {
       var line = lines[i];
 
       // 尝试策略1
       var m = line.match(pattern1);
+      if (m) {
+        results.push({
+          question: m[1].trim(),
+          answer: normalizeAnswer(m[2].trim()),
+          type: guessType(m[2].trim()),
+          options: null
+        });
+        continue;
+      }
+
+      // 尝试策略4：xxx（A）
+      m = line.match(pattern4);
       if (m) {
         results.push({
           question: m[1].trim(),
@@ -34,6 +50,22 @@ var Parser = (function() {
           question: m[1] + '. ' + m[2].trim(),
           answer: normalizeAnswer(m[3].trim()),
           type: guessType(m[3].trim()),
+          options: null
+        });
+        continue;
+      }
+
+      // 尝试策略5：选项标注了"(正确答案)"
+      m = line.match(pattern5);
+      if (m) {
+        var prevLine = i > 0 ? lines[i - 1] : '';
+        // 上一行作为题目（如果不匹配策略2），否则取上一行内容
+        var qPart = prevLine;
+        var isPrevQ = prevLine.length > 1 && !pattern5.test(prevLine);
+        results.push({
+          question: isPrevQ ? qPart : ('第' + (results.length + 1) + '题'),
+          answer: normalizeAnswer(m[1]),
+          type: 'choice',
           options: null
         });
         continue;
