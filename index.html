@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#1a73e8">
+  <link rel="manifest" href="manifest.json">
+  <title>答题助手</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- 顶部状态栏 -->
+  <div id="status-bar">
+    <span id="status-title">答题助手</span>
+    <span id="status-count" class="badge">题库: 0题</span>
+  </div>
+
+  <!-- 搜索页 -->
+  <main id="view-search" class="view active">
+    <div class="search-container">
+      <textarea id="search-input" class="search-box"
+        placeholder="在此粘贴题目文字...&#10;或直接输入关键词搜索" rows="3"></textarea>
+      <button id="search-btn" class="btn btn-primary btn-full">搜索答案</button>
+      <div id="search-result" class="result-area"></div>
+    </div>
+    <p id="empty-hint" class="hint">还没有题库？去「题库」页导入</p>
+  </main>
+
+  <!-- 题库页 -->
+  <main id="view-bank" class="view">
+    <div class="bank-container">
+      <div class="upload-section">
+        <label for="file-input" class="btn btn-outline btn-full">📁 上传题库文件 (Word/PDF/Excel)</label>
+        <input type="file" id="file-input" accept=".docx,.pdf,.xlsx,.xls" hidden multiple>
+        <div id="upload-status"></div>
+      </div>
+      <div id="preview-section" class="preview-section hidden">
+        <h3>解析预览（前5条）</h3>
+        <div id="preview-list"></div>
+        <div class="btn-row">
+          <button id="confirm-import" class="btn btn-primary">确认导入</button>
+          <button id="cancel-import" class="btn btn-outline">取消</button>
+        </div>
+      </div>
+      <hr>
+      <div class="stats-section">
+        <div class="stat-row"><span>📊 题库总数</span><span id="stat-total">0</span></div>
+        <div class="stat-row"><span>✅ 选择题</span><span id="stat-choice">0</span></div>
+        <div class="stat-row"><span>❓ 判断题</span><span id="stat-tf">0</span></div>
+      </div>
+      <button id="clear-bank" class="btn btn-danger btn-full margin-top">清空题库</button>
+    </div>
+  </main>
+
+  <!-- 设置页 -->
+  <main id="view-settings" class="view">
+    <div class="settings-container">
+      <h3>AI 配置（可选）</h3>
+      <label>API Key</label>
+      <input type="password" id="api-key" class="input" placeholder="sk-...">
+      <label>Base URL</label>
+      <input type="text" id="api-base" class="input" placeholder="https://api.openai.com/v1">
+      <label>模型名称</label>
+      <input type="text" id="api-model" class="input" placeholder="gpt-4o-mini">
+      <button id="test-ai" class="btn btn-outline btn-full">测试连接</button>
+      <hr>
+      <p class="version">答题助手 v1.0</p>
+      <p class="desc">所有数据存储在本地，不上传服务器</p>
+    </div>
+  </main>
+
+  <!-- 底部导航 -->
+  <nav id="bottom-nav">
+    <button class="nav-btn active" data-view="search">🔍 搜索</button>
+    <button class="nav-btn" data-view="bank">📚 题库</button>
+    <button class="nav-btn" data-view="settings">⚙️ 设置</button>
+  </nav>
+
+  <!-- Toast -->
+  <div id="toast" class="toast hidden"></div>
+
+  <!-- CDN 库 -->
+  <script src="https://unpkg.com/mammoth@1.8.0/mammoth.browser.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+  <script src="https://unpkg.com/fuse.js@7.0.0/dist/fuse.basic.min.js"></script>
+
+  <!-- App 脚本 -->
+  <script src="js/db.js"></script>
+  <script src="js/parser.js"></script>
+  <script src="js/ai.js"></script>
+  <script src="js/search.js"></script>
+  <script src="js/app.js"></script>
+
+  <!-- 注册 Service Worker -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js');
+    }
+  </script>
+</body>
+</html>
