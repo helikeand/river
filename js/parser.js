@@ -11,8 +11,10 @@ var Parser = (function() {
     var pattern2 = /^\s*(\d+)[\.、\)]\s*(.+?)\s+([A-D√×对错正确错误])\s*$/;
     // 策略3: "1.A  2.B  3.C" 纯答案序列
     var pattern3 = /^\s*(\d+)\s*[\.、\)]\s*([A-D√×对错正确错误])\s*$/;
-    // 策略4: "xxx（A）" — 答案在题目末尾括号内 (如 "何俊测试的第二时间（A）")
-    var pattern4 = /^(.+?)（([A-D√×对错正确错误]+)）\s*$/;
+    // 策略4: "xxx（A）" — 答案在题目末尾括号内 (如 "何俊测试的第二时间（A）" 或 "1.何俊测试的第二时间（A）")
+    var pattern4 = /^\s*(?:\d+[\.、\)]\s*)?(.+?)[（(]([A-Da-d√×对错正确错误]+)[）)]\s*$/;
+    // 策略4b: 数字开头 + 答案括号 (如 "1.何俊测试的第二时间（A）")
+    var pattern4b = /^\s*(\d+)[\.、\)]\s*([^（(]+)[（(]([A-Da-d√×对错正确错误]+)[）)]\s*$/;
     // 策略5: "A、今天（正确答案）" — 正确选项标注了"正确答案"
     var pattern5 = /^([A-D])[、\.]\s*.+?（(?:正确|答案|√|对)/i;
 
@@ -26,6 +28,18 @@ var Parser = (function() {
           question: m[1].trim(),
           answer: normalizeAnswer(m[2].trim()),
           type: guessType(m[2].trim()),
+          options: null
+        });
+        continue;
+      }
+
+      // 尝试策略4b：数字.题目（答案）
+      m = line.match(pattern4b);
+      if (m) {
+        results.push({
+          question: m[1] + '. ' + m[2].trim(),
+          answer: normalizeAnswer(m[3].trim()),
+          type: guessType(m[3].trim()),
           options: null
         });
         continue;
