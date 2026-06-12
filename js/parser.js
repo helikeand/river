@@ -2,124 +2,96 @@ var Parser = (function() {
 
   // ====== 通用：从文本中解析题目-答案对 ======
   function parseTextToQA(text, sourceName) {
-    var lines = text.split(/\n/).map(function(l) { return l.trim(); }).filter(function(l) { return l.length > 1; });
+    var lines = text.split(/\n/).map(function(l) { return l.trim(); }).filter(function(l) { return l.length > 0; });
     var results = [];
 
-    // 策略1: "题目：xxx 答案：A" 格式
-    var pattern1 = /题目[：:]\s*(.+?)\s*答案[：:]\s*([A-D√×对错正确错误]+)/i;
-    // 策略2: "1. xxx  A. xxx  B. xxx" 题号+选项格式 (末尾的字母视为答案)
-    var pattern2 = /^\s*(\d+)[\.、\)]\s*(.+?)\s+([A-D√×对错正确错误])\s*$/;
-    // 策略3: "1.A  2.B  3.C" 纯答案序列
-    var pattern3 = /^\s*(\d+)\s*[\.、\)]\s*([A-D√×对错正确错误])\s*$/;
-    // 策略4: "xxx（A）" — 答案在题目末尾括号内 (如 "何俊测试的第二时间（A）" 或 "1.何俊测试的第二时间（A）")
-    var pattern4 = /^\s*(?:\d+[\.、\)]\s*)?(.+?)[（(]([A-Da-d√×对错正确错误]+)[）)]\s*$/;
-    // 策略4b: 数字开头 + 答案括号 (如 "1.何俊测试的第二时间（A）")
-    var pattern4b = /^\s*(\d+)[\.、\)]\s*([^（(]+)[（(]([A-Da-d√×对错正确错误]+)[）)]\s*$/;
-    // 策略5: "A、今天（正确答案）" — 正确选项标注了"正确答案"
-    var pattern5 = /^([A-D])[、\.]\s*.+?（(?:正确|答案|√|对)/i;
+    // 通用模式：在任意位置找到括号中的答案字母 (A-D) 或 √×
+    // 匹配 "...（A）..." 或 "...(A)..." 或 "...答案 A..." 等
 
     for (var i = 0; i < lines.length; i++) {
       var line = lines[i];
+      var matched = false;
 
-      // 尝试策略1
-      var m = line.match(pattern1);
-      if (m) {
-        results.push({
-          question: m[1].trim(),
-          answer: normalizeAnswer(m[2].trim()),
-          type: guessType(m[2].trim()),
-          options: null
-        });
+      // ---- 模式1: 题目：xxx 答案：A ----
+      var m1 = /题目[：:]\s*(.+?)\s*答案[：:]\s*([A-D√×对错正确错误]+)/i.exec(line);
+      if (m1) {
+        results.push(makeQA(m1[1], m1[2], sourceName));
+        matched = true;
         continue;
       }
 
-      // 尝试策略4b：数字.题目（答案）
-      m = line.match(pattern4b);
-      if (m) {
-        results.push({
-          question: m[1] + '. ' + m[2].trim(),
-          answer: normalizeAnswer(m[3].trim()),
-          type: guessType(m[3].trim()),
-          options: null
-        });
+      // ---- 模式2: xxx（A）或 xxx(A) — 行末括号含答案 ----
+      var m2 = /(.+?)[（(]\s*([A-Da-d])\s*[）)]\s*$/.exec(line);
+      if (m2) {
+        var q = m2[1].replace(/^\s*\d+[\.、\)]\s*/, '').trim();
+        results.push(makeQA(q, m2[2], sourceName));
+        matched = true;
         continue;
       }
 
-      // 尝试策略4：xxx（A）
-      m = line.match(pattern4);
-      if (m) {
-        results.push({
-          question: m[1].trim(),
-          answer: normalizeAnswer(m[2].trim()),
-          type: guessType(m[2].trim()),
-          options: null
-        });
-        continue;
-      }
+      // ---- 模式3: "1. xxx  A. xxx  B. xxx  C. xxx" 选项混排行，跳过 ----
+      // 这种行通常包含多个选项，不是题目行
 
-      // 尝试策略2
-      m = line.match(pattern2);
-      if (m) {
-        results.push({
-          question: m[1] + '. ' + m[2].trim(),
-          answer: normalizeAnswer(m[3].trim()),
-          type: guessType(m[3].trim()),
-          options: null
-        });
-        continue;
-      }
-
-      // 尝试策略5：选项标注了"(正确答案)"
-      m = line.match(pattern5);
-      if (m) {
+      // ---- 模式4: "A、今天（正确答案）" 或 "A、今天（正确）" — 标注了正确答案的选项 ----
+      var m4 = /^([A-D])[、\.\)]\s*.+?[（(]\s*(?:正确|答案|√|对)\s*[）)]/.exec(line);
+      if (m4) {
         var prevLine = i > 0 ? lines[i - 1] : '';
-        // 上一行作为题目（如果不匹配策略2），否则取上一行内容
-        var qPart = prevLine;
-        var isPrevQ = prevLine.length > 1 && !pattern5.test(prevLine);
-        results.push({
-          question: isPrevQ ? qPart : ('第' + (results.length + 1) + '题'),
-          answer: normalizeAnswer(m[1]),
-          type: 'choice',
-          options: null
-        });
+        results.push(makeQA(prevLine || ('第' + (results.length + 1) + '题'), m4[1], sourceName));
+        matched = true;
         continue;
       }
-    }
 
-    // 如果以上都没匹配到，尝试策略3：检测纯答案序列
-    if (results.length === 0) {
-      for (var j = 0; j < lines.length; j++) {
-        var m3 = lines[j].match(pattern3);
-        if (m3) {
-          results.push({
-            question: '第' + m3[1] + '题',
-            answer: normalizeAnswer(m3[2].trim()),
-            type: guessType(m3[2].trim()),
-            options: null
-          });
+      // ---- 模式5: "1. 题干文字" 后面跟着选项行 ----
+      // 如果当前行以数字开头且没有括号答案，检查下一行是否有选项
+      var m5 = /^\s*(\d+)[\.、\)]\s*(.+)$/.exec(line);
+      if (m5) {
+        var nextLine = i < lines.length - 1 ? lines[i + 1] : '';
+        // 下一行是否包含 "(正确答案)"
+        var nextM = /^([A-D])[、\.\)]\s*.+?[（(]\s*(?:正确|答案|√|对)\s*[）)]/.exec(nextLine);
+        if (nextM) {
+          results.push(makeQA(m5[1] + '. ' + m5[2].trim(), nextM[1], sourceName));
+          i++; // 跳过下一行
+          matched = true;
+          continue;
         }
       }
     }
 
-    // 附加来源
-    for (var k = 0; k < results.length; k++) {
-      results[k].source = sourceName;
+    // ---- 兜底：纯答案序列 "1.A  2.B  3.C" ----
+    if (results.length === 0) {
+      for (var j = 0; j < lines.length; j++) {
+        var m6 = /^\s*(\d+)\s*[\.、\)]\s*([A-Da-d√×对错正确错误])/.exec(lines[j]);
+        if (m6) {
+          results.push(makeQA('第' + m6[1] + '题', m6[2], sourceName));
+        }
+      }
     }
+
     return results;
+  }
+
+  function makeQA(questionText, answerRaw, sourceName) {
+    return {
+      question: questionText.trim(),
+      answer: normalizeAnswer(answerRaw),
+      type: guessType(answerRaw),
+      options: null,
+      source: sourceName
+    };
   }
 
   function normalizeAnswer(raw) {
     var t = raw.trim();
     if (/对|正确|√|✓|true|yes/i.test(t)) return '√';
     if (/错|错误|×|✗|false|no/i.test(t)) return '×';
-    if (/^[A-Da-d]$/.test(t)) return t.toUpperCase();
+    if (/^[A-D]$/i.test(t)) return t.toUpperCase();
     return t;
   }
 
   function guessType(answer) {
     var t = answer.trim();
     if (/[√×对错正确错误]/.test(t)) return 'truefalse';
-    if (/^[A-Da-d]$/.test(t)) return 'choice';
+    if (/^[A-D]$/i.test(t)) return 'choice';
     return 'unknown';
   }
 
@@ -127,6 +99,10 @@ var Parser = (function() {
   async function parseDocx(file) {
     var arrayBuffer = await file.arrayBuffer();
     var result = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
+    // 调试：在控制台输出提取的原始文本
+    console.log('=== Word 提取文本（前500字）===');
+    console.log(result.value.substring(0, 500));
+    console.log('=== 提取结束 ===');
     return parseTextToQA(result.value, file.name);
   }
 
@@ -153,7 +129,6 @@ var Parser = (function() {
     var firstSheet = workbook.Sheets[workbook.SheetNames[0]];
     var rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
 
-    // 尝试自动识别题目列和答案列
     var headerRow = rows[0] || [];
     var qCol = -1, aCol = -1;
     for (var i = 0; i < headerRow.length; i++) {
@@ -170,13 +145,7 @@ var Parser = (function() {
     return dataRows
       .filter(function(row) { return row[qCol] && String(row[qCol]).trim().length > 1; })
       .map(function(row) {
-        return {
-          question: String(row[qCol]).trim(),
-          answer: normalizeAnswer(String(row[aCol] || '').trim()),
-          type: guessType(String(row[aCol] || '')),
-          options: null,
-          source: file.name
-        };
+        return makeQA(String(row[qCol]).trim(), String(row[aCol] || '').trim(), file.name);
       });
   }
 
