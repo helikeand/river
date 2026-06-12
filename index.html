@@ -30,8 +30,8 @@
   <main id="view-bank" class="view">
     <div class="bank-container">
       <div class="upload-section">
-        <label for="file-input" class="btn btn-outline btn-full">📁 上传题库文件 (Word/PDF/Excel)</label>
-        <input type="file" id="file-input" accept=".docx,.pdf,.xlsx,.xls" hidden multiple>
+        <button id="upload-btn" class="btn btn-outline btn-full" onclick="document.getElementById('file-input').click()">📁 上传题库文件 (Word/PDF/Excel)</button>
+        <input type="file" id="file-input" accept=".docx,.pdf,.xlsx,.xls" multiple>
         <div id="upload-status"></div>
       </div>
       <div id="preview-section" class="preview-section hidden">
