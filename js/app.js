@@ -45,6 +45,11 @@ window.searchQuestion = async function(text) {
   return JSON.stringify(result);
 };
 
+// 判断是否在 Android 壳中（有真正的原生 JsBridge）
+window.isAndroidApp = function() {
+  return window.Android && typeof window.Android.isNative === 'function' && window.Android.isNative() === true;
+};
+
 // Android 壳暴露的接口（如不可用则 fallback 到页面内显示）
 window.Android = window.Android || {
   showAnswer: function(json) {
@@ -76,12 +81,7 @@ window.Android = window.Android || {
     } catch (e) {
       console.error('showAnswer error', e);
     }
-  },
-  // 同步方法的 fallback（非 Android 环境下点击会提示）
-  exportBank: function(json) { showToast('导出功能需要 Android App 支持'); },
-  copyToClipboard: function(json) { showToast('复制功能需要 Android App 支持'); },
-  pasteFromClipboard: function() { showToast('粘贴功能需要 Android App 支持'); },
-  requestImport: function() { showToast('导入功能需要 Android App 支持'); }
+  }
 };
 
 function escapeHtml(s) {
@@ -299,7 +299,7 @@ async function exportBank() {
       })
     };
     var json = JSON.stringify(exportData, null, 2);
-    if (window.Android && window.Android.exportBank) {
+    if (window.isAndroidApp && window.isAndroidApp()) {
       window.Android.exportBank(json);
       showToast('正在导出题库...');
     } else {
@@ -340,7 +340,7 @@ async function copyBankToClipboard() {
       })
     };
     var json = JSON.stringify(exportData);
-    if (window.Android && window.Android.copyToClipboard) {
+    if (window.isAndroidApp && window.isAndroidApp()) {
       window.Android.copyToClipboard(json);
     } else {
       // 浏览器 fallback
@@ -357,7 +357,7 @@ async function copyBankToClipboard() {
 }
 
 function pasteBankFromClipboard() {
-  if (window.Android && window.Android.pasteFromClipboard) {
+  if (window.isAndroidApp && window.isAndroidApp()) {
     window.Android.pasteFromClipboard();
   } else {
     // 浏览器 fallback：尝试从剪贴板读取
@@ -374,7 +374,7 @@ function pasteBankFromClipboard() {
 }
 
 function requestImportFile() {
-  if (window.Android && window.Android.requestImport) {
+  if (window.isAndroidApp && window.isAndroidApp()) {
     window.Android.requestImport();
   } else {
     // 浏览器 fallback：创建隐藏的文件选择器
