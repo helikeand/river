@@ -129,3 +129,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
 .candidate-item:active { background: #e8f0fe; }
 .candidate-item .c-q { font-size: 13px; color: var(--text-secondary); }
 .candidate-item .c-a { font-size: 14px; color: var(--primary); font-weight: 600; }
+
+/* Sync section */
+.sync-section { background: var(--card); border-radius: var(--radius); padding: 14px 16px; box-shadow: var(--shadow); }
+.sync-section h3 { font-size: 15px; margin-bottom: 4px; }

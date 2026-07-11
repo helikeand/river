@@ -76,7 +76,12 @@ window.Android = window.Android || {
     } catch (e) {
       console.error('showAnswer error', e);
     }
-  }
+  },
+  // 同步方法的 fallback（非 Android 环境下点击会提示）
+  exportBank: function(json) { showToast('导出功能需要 Android App 支持'); },
+  copyToClipboard: function(json) { showToast('复制功能需要 Android App 支持'); },
+  pasteFromClipboard: function() { showToast('粘贴功能需要 Android App 支持'); },
+  requestImport: function() { showToast('导入功能需要 Android App 支持'); }
 };
 
 function escapeHtml(s) {
@@ -271,11 +276,174 @@ function initSettingsUI() {
   });
 }
 
+// ====== 题库同步 ======
+async function exportBank() {
+  try {
+    var all = await db.getAll();
+    if (all.length === 0) {
+      showToast('题库为空，请先导入题目');
+      return;
+    }
+    var exportData = {
+      version: 1,
+      exportedAt: Date.now(),
+      count: all.length,
+      questions: all.map(function(q) {
+        return {
+          question: q.question,
+          answer: q.answer,
+          type: q.type,
+          options: q.options,
+          source: q.source
+        };
+      })
+    };
+    var json = JSON.stringify(exportData, null, 2);
+    if (window.Android && window.Android.exportBank) {
+      window.Android.exportBank(json);
+      showToast('正在导出题库...');
+    } else {
+      // 浏览器 fallback：下载 JSON 文件
+      var blob = new Blob([json], { type: 'application/json' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = '答题助手题库_' + new Date().toISOString().slice(0, 10) + '.json';
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('题库已下载');
+    }
+  } catch (e) {
+    showToast('导出失败: ' + e.message, 3000);
+  }
+}
+
+async function copyBankToClipboard() {
+  try {
+    var all = await db.getAll();
+    if (all.length === 0) {
+      showToast('题库为空，请先导入题目');
+      return;
+    }
+    var exportData = {
+      version: 1,
+      exportedAt: Date.now(),
+      count: all.length,
+      questions: all.map(function(q) {
+        return {
+          question: q.question,
+          answer: q.answer,
+          type: q.type,
+          options: q.options,
+          source: q.source
+        };
+      })
+    };
+    var json = JSON.stringify(exportData);
+    if (window.Android && window.Android.copyToClipboard) {
+      window.Android.copyToClipboard(json);
+    } else {
+      // 浏览器 fallback
+      try {
+        await navigator.clipboard.writeText(json);
+        showToast('题库 JSON 已复制到剪贴板，可发送给其他设备导入');
+      } catch (err) {
+        showToast('复制失败: ' + err.message, 3000);
+      }
+    }
+  } catch (e) {
+    showToast('复制失败: ' + e.message, 3000);
+  }
+}
+
+function pasteBankFromClipboard() {
+  if (window.Android && window.Android.pasteFromClipboard) {
+    window.Android.pasteFromClipboard();
+  } else {
+    // 浏览器 fallback：尝试从剪贴板读取
+    try {
+      navigator.clipboard.readText().then(function(text) {
+        importBankFromJson(text);
+      }).catch(function(err) {
+        showToast('请在输入框中粘贴 JSON 内容后手动导入', 3000);
+      });
+    } catch (e) {
+      showToast('粘贴功能需要 HTTPS 或 Android App 支持', 3000);
+    }
+  }
+}
+
+function requestImportFile() {
+  if (window.Android && window.Android.requestImport) {
+    window.Android.requestImport();
+  } else {
+    // 浏览器 fallback：创建隐藏的文件选择器
+    var input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json,application/json';
+    input.onchange = function(e) {
+      var file = e.target.files[0];
+      if (!file) return;
+      var reader = new FileReader();
+      reader.onload = function(ev) {
+        importBankFromJson(ev.target.result);
+      };
+      reader.readAsText(file);
+    };
+    input.click();
+  }
+}
+
+// 由 Android 壳或浏览器调用：从 JSON 字符串导入题库
+window.importBankFromJson = async function(jsonStr) {
+  try {
+    var data = JSON.parse(jsonStr);
+    var questions = [];
+
+    // 支持两种格式：{ questions: [...] } 或 [...] 数组
+    if (Array.isArray(data)) {
+      questions = data;
+    } else if (data.questions && Array.isArray(data.questions)) {
+      questions = data.questions;
+    } else {
+      showToast('无效的题库格式');
+      return;
+    }
+
+    if (questions.length === 0) {
+      showToast('文件中没有题目数据');
+      return;
+    }
+
+    var count = await db.addBatch(questions);
+    await AnswerSearch.rebuildIndex();
+    showToast('成功导入 ' + count + ' 道题');
+    refreshStats();
+    updateBankCount();
+  } catch (e) {
+    showToast('导入失败: ' + e.message, 3000);
+    console.error('importBankFromJson error', e);
+  }
+};
+
+function initSyncUI() {
+  var exportBtn = document.getElementById('export-bank-btn');
+  var importFileBtn = document.getElementById('import-file-btn');
+  var copyBtn = document.getElementById('copy-bank-btn');
+  var pasteBtn = document.getElementById('paste-bank-btn');
+
+  if (exportBtn) exportBtn.addEventListener('click', exportBank);
+  if (importFileBtn) importFileBtn.addEventListener('click', requestImportFile);
+  if (copyBtn) copyBtn.addEventListener('click', copyBankToClipboard);
+  if (pasteBtn) pasteBtn.addEventListener('click', pasteBankFromClipboard);
+}
+
 // ====== 初始化 ======
 document.addEventListener('DOMContentLoaded', async function() {
   initNav();
   initSearchUI();
   initBankUI();
   initSettingsUI();
+  initSyncUI();
   updateBankCount();
 });

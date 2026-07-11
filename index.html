@@ -31,7 +31,7 @@
     <div class="bank-container">
       <div class="upload-section">
         <button id="upload-btn" class="btn btn-outline btn-full" onclick="document.getElementById('file-input').click()">📁 上传题库文件 (Word/PDF/Excel)</button>
-        <input type="file" id="file-input" accept=".docx,.pdf,.xlsx,.xls" multiple>
+        <input type="file" id="file-input" accept=".docx,.pdf,.xlsx,.xls,.json" multiple>
         <div id="upload-status"></div>
       </div>
       <div id="preview-section" class="preview-section hidden">
@@ -40,6 +40,19 @@
         <div class="btn-row">
           <button id="confirm-import" class="btn btn-primary">确认导入</button>
           <button id="cancel-import" class="btn btn-outline">取消</button>
+        </div>
+      </div>
+      <hr>
+      <div class="sync-section">
+        <h3>🔄 题库同步</h3>
+        <p style="font-size:12px;color:#999;margin-bottom:8px">将题库导出为 JSON 文件，或从其他设备导入</p>
+        <div class="btn-row">
+          <button id="export-bank-btn" class="btn btn-outline">📤 导出题库</button>
+          <button id="import-file-btn" class="btn btn-outline">📥 导入题库</button>
+        </div>
+        <div class="btn-row" style="margin-top:6px">
+          <button id="copy-bank-btn" class="btn btn-outline">📋 复制到剪贴板</button>
+          <button id="paste-bank-btn" class="btn btn-outline">📌 从剪贴板粘贴</button>
         </div>
       </div>
       <hr>

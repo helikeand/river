@@ -182,12 +182,35 @@ var Parser = (function() {
       });
   }
 
+  // ====== JSON (.json) ======
+  async function parseJson(file) {
+    var text = await file.text();
+    var data = JSON.parse(text);
+    var questions = [];
+
+    // 支持两种格式：{ questions: [...] } 或纯数组 [...]
+    var list = Array.isArray(data) ? data : (data.questions || []);
+    for (var i = 0; i < list.length; i++) {
+      var item = list[i];
+      if (item.question && item.answer !== undefined) {
+        questions.push(makeQA(
+          item.question,
+          item.answer,
+          item.source || file.name,
+          item.options || null
+        ));
+      }
+    }
+    return questions;
+  }
+
   // ====== 主入口 ======
   async function parseFile(file) {
     var ext = file.name.split('.').pop().toLowerCase();
     if (ext === 'docx') return parseDocx(file);
     if (ext === 'pdf') return parsePdf(file);
     if (ext === 'xlsx' || ext === 'xls') return parseExcel(file);
+    if (ext === 'json') return parseJson(file);
     throw new Error('不支持的文件格式: .' + ext);
   }
 
