@@ -1,4 +1,6 @@
-const CACHE_NAME = 'auto-answer-v2';   // 建议升级版本号，避免旧缓存
+// 缓存版本 → 每次更新代码时递增此数字
+const CACHE_NAME = 'auto-answer-v3';
+
 const ASSETS = [
   './',
   './index.html',
@@ -15,14 +17,35 @@ const ASSETS = [
   './libs/fuse.basic.min.js'
 ];
 
-self.addEventListener('install', (e) => {
-  e.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS))
+// 安装事件：预先缓存所有资源
+self.addEventListener('install', event => {
+  event.waitUntil(
+    caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS))
   );
+  // 新 SW 立即激活（不等待旧 SW 释放页面）
+  self.skipWaiting();
 });
 
-self.addEventListener('fetch', (e) => {
-  e.respondWith(
-    caches.match(e.request).then((r) => r || fetch(e.request))
+// 激活事件：清理旧版本缓存
+self.addEventListener('activate', event => {
+  event.waitUntil(
+    caches.keys().then(cacheNames => {
+      return Promise.all(
+        cacheNames
+          .filter(name => name !== CACHE_NAME)
+          .map(name => caches.delete(name))
+      );
+    })
+  );
+  // 确保新 SW 立即控制所有客户端
+  self.clients.claim();
+});
+
+// 请求拦截：缓存优先，网络回退
+self.addEventListener('fetch', event => {
+  event.respondWith(
+    caches.match(event.request).then(cachedResponse => {
+      return cachedResponse || fetch(event.request);
+    })
   );
 });
