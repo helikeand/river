@@ -8,6 +8,12 @@ const ASSETS = [
   './js/parser.js',
   './js/search.js',
   './js/ai.js'
+ // 新增下面几行
+  './libs/mammoth.browser.min.js',
+  './libs/pdf.min.js',
+  './libs/pdf.worker.min.js',
+  './libs/xlsx.full.min.js',
+  './libs/fuse.basic.min.js'
 ];
 
 self.addEventListener('install', (e) => {
