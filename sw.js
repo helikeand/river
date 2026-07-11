@@ -1,4 +1,4 @@
-const CACHE_NAME = 'auto-answer-v1';
+const CACHE_NAME = 'auto-answer-v2';   // 建议升级版本号，避免旧缓存
 const ASSETS = [
   './',
   './index.html',
@@ -7,8 +7,7 @@ const ASSETS = [
   './js/db.js',
   './js/parser.js',
   './js/search.js',
-  './js/ai.js'
- // 新增下面几行
+  './js/ai.js',
   './libs/mammoth.browser.min.js',
   './libs/pdf.min.js',
   './libs/pdf.worker.min.js',

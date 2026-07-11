@@ -1,75 +1,81 @@
-var Parser = (function() {
+function parseTextToQA(text, sourceName) {
+  var lines = text.split(/\n/).map(l => l.trim()).filter(l => l.length > 0);
+  var results = [];
 
-  // ====== 通用：从文本中解析题目-答案对 ======
-  function parseTextToQA(text, sourceName) {
-    var lines = text.split(/\n/).map(function(l) { return l.trim(); }).filter(function(l) { return l.length > 0; });
-    var results = [];
+  // 判断一行是否为“标注了正确答案的选项”
+  function isMarkedAnswerLine(line) {
+    // 匹配: A、xxx（正确答案） 或 A. xxx（正确）等
+    return /^[A-D][、\.\)]\s*.+[（(]\s*(?:正确|答案|√|对|正确选项|正确答案|true|yes|✅)\s*[）)]/i.test(line);
+  }
 
-    // 通用模式：在任意位置找到括号中的答案字母 (A-D) 或 √×
-    // 匹配 "...（A）..." 或 "...(A)..." 或 "...答案 A..." 等
+  // 从标记行提取选项字母
+  function extractOptionLetter(line) {
+    var m = /^([A-D])[、\.\)]/.exec(line);
+    return m ? m[1] : null;
+  }
 
-    for (var i = 0; i < lines.length; i++) {
-      var line = lines[i];
-      var matched = false;
+  // 是否看起来像纯选项行（A、xxx 但没有答案标注）
+  function isOptionOnlyLine(line) {
+    return /^[A-D][、\.\)]/.test(line) && !isMarkedAnswerLine(line);
+  }
 
-      // ---- 模式1: 题目：xxx 答案：A ----
-      var m1 = /题目[：:]\s*(.+?)\s*答案[：:]\s*([A-D√×对错正确错误]+)/i.exec(line);
-      if (m1) {
-        results.push(makeQA(m1[1], m1[2], sourceName));
-        matched = true;
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i];
+    var matched = false;
+
+    // 模式1：题目：xxx 答案：A （同一行）
+    var m1 = /题目[：:]\s*(.+?)\s*答案[：:]\s*([A-D√×对错正确错误]+)/i.exec(line);
+    if (m1) {
+      results.push(makeQA(m1[1], m1[2], sourceName));
+      continue;
+    }
+
+    // 模式2：题干……（A） 行末括号含单个字母
+    var m2 = /(.+?)[（(]\s*([A-Da-d])\s*[）)]\s*$/.exec(line);
+    if (m2 && !isOptionOnlyLine(line)) {
+      var q = m2[1].replace(/^\s*\d+[\.、\)]\s*/, '').trim();
+      results.push(makeQA(q, m2[2], sourceName));
+      continue;
+    }
+
+    // 模式4+5 合并：标记行直接作为答案，或者下一行是标记行
+    if (isMarkedAnswerLine(line)) {
+      var letter = extractOptionLetter(line);
+      if (letter) {
+        var prevLine = (i > 0 && !isOptionOnlyLine(lines[i-1])) ? lines[i-1] : '';
+        var question = prevLine.replace(/^\s*\d+[\.、\)]\s*/, '').trim() || ('第' + (results.length + 1) + '题');
+        results.push(makeQA(question, letter, sourceName));
         continue;
       }
+    }
 
-      // ---- 模式2: xxx（A）或 xxx(A) — 行末括号含答案 ----
-      var m2 = /(.+?)[（(]\s*([A-Da-d])\s*[）)]\s*$/.exec(line);
-      if (m2) {
-        var q = m2[1].replace(/^\s*\d+[\.、\)]\s*/, '').trim();
-        results.push(makeQA(q, m2[2], sourceName));
-        matched = true;
-        continue;
-      }
-
-      // ---- 模式3: "1. xxx  A. xxx  B. xxx  C. xxx" 选项混排行，跳过 ----
-      // 这种行通常包含多个选项，不是题目行
-
-      // ---- 模式4: "A、今天（正确答案）" 或 "A、今天（正确）" — 标注了正确答案的选项 ----
-      var m4 = /^([A-D])[、\.\)]\s*.+?[（(]\s*(?:正确|答案|√|对)\s*[）)]/.exec(line);
-      if (m4) {
-        var prevLine = i > 0 ? lines[i - 1] : '';
-        results.push(makeQA(prevLine || ('第' + (results.length + 1) + '题'), m4[1], sourceName));
-        matched = true;
-        continue;
-      }
-
-      // ---- 模式5: "1. 题干文字" 后面跟着选项行 ----
-      // 如果当前行以数字开头且没有括号答案，检查下一行是否有选项
-      var m5 = /^\s*(\d+)[\.、\)]\s*(.+)$/.exec(line);
-      if (m5) {
-        var nextLine = i < lines.length - 1 ? lines[i + 1] : '';
-        // 下一行是否包含 "(正确答案)"
-        var nextM = /^([A-D])[、\.\)]\s*.+?[（(]\s*(?:正确|答案|√|对)\s*[）)]/.exec(nextLine);
-        if (nextM) {
-          results.push(makeQA(m5[1] + '. ' + m5[2].trim(), nextM[1], sourceName));
+    // 模式5：数字开头题目，下一行是标记行
+    var m5 = /^\s*(\d+)[\.、\)]\s*(.+)$/.exec(line);
+    if (m5 && i + 1 < lines.length) {
+      var nextLine = lines[i + 1];
+      if (isMarkedAnswerLine(nextLine)) {
+        var letter2 = extractOptionLetter(nextLine);
+        if (letter2) {
+          results.push(makeQA(m5[1] + '. ' + m5[2].trim(), letter2, sourceName));
           i++; // 跳过下一行
-          matched = true;
           continue;
         }
       }
     }
-
-    // ---- 兜底：纯答案序列 "1.A  2.B  3.C" ----
-    if (results.length === 0) {
-      for (var j = 0; j < lines.length; j++) {
-        var m6 = /^\s*(\d+)\s*[\.、\)]\s*([A-Da-d√×对错正确错误])/.exec(lines[j]);
-        if (m6) {
-          results.push(makeQA('第' + m6[1] + '题', m6[2], sourceName));
-        }
-      }
-    }
-
-    return results;
   }
 
+  // 兜底：纯答案序列
+  if (results.length === 0) {
+    for (var j = 0; j < lines.length; j++) {
+      var m6 = /^\s*(\d+)\s*[\.、\)]\s*([A-Da-d√×对错正确错误])/.exec(lines[j]);
+      if (m6) {
+        results.push(makeQA('第' + m6[1] + '题', m6[2], sourceName));
+      }
+    }
+  }
+
+  return results;
+}
   function makeQA(questionText, answerRaw, sourceName) {
     return {
       question: questionText.trim(),
