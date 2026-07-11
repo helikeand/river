@@ -42,7 +42,12 @@ async function updateBankCount() {
 // ====== JS Bridge: 供 Android 壳调用 ======
 window.searchQuestion = async function(text) {
   var result = await AnswerSearch.search(text);
-  return JSON.stringify(result);
+  var json = JSON.stringify(result);
+  // 同时通过 JsBridge 通知 Android（悬浮窗弹答案）
+  if (window.Android && window.Android.showAnswer) {
+    try { window.Android.showAnswer(json); } catch(e) {}
+  }
+  return json;
 };
 
 // 判断是否在 Android 壳中（有真正的原生 JsBridge）
