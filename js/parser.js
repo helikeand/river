@@ -76,15 +76,15 @@ function parseTextToQA(text, sourceName) {
 
   return results;
 }
-  function makeQA(questionText, answerRaw, sourceName) {
-    return {
-      question: questionText.trim(),
-      answer: normalizeAnswer(answerRaw),
-      type: guessType(answerRaw),
-      options: null,
-      source: sourceName
-    };
-  }
+  function makeQA(questionText, answerRaw, sourceName, optionsArray) {
+  return {
+    question: questionText.trim(),
+    answer: normalizeAnswer(answerRaw),
+    type: optionsArray && optionsArray.some(o => o.trim()) ? 'choice' : guessType(answerRaw),
+    options: optionsArray || null,   // 保存选项
+    source: sourceName
+  };
+}
 
   function normalizeAnswer(raw) {
     var t = raw.trim();
@@ -129,7 +129,8 @@ function parseTextToQA(text, sourceName) {
   }
 
   // ====== Excel (.xlsx/.xls) ======
- async function parseExcel(file) {
+ // ====== Excel (.xlsx/.xls) 增强版：自动识别选项列 ======
+async function parseExcel(file) {
   var arrayBuffer = await file.arrayBuffer();
   var workbook = XLSX.read(arrayBuffer, { type: 'array' });
   var firstSheet = workbook.Sheets[workbook.SheetNames[0]];
@@ -137,39 +138,66 @@ function parseTextToQA(text, sourceName) {
 
   if (rows.length === 0) return [];
 
-  // 1. 寻找标题行（前5行内）
+  // 1. 寻找标题行（在前 5 行内查找包含“题干”“答案”“选项”的行）
   var headerRowIndex = -1;
   var qCol = -1, aCol = -1;
+  var optionCols = {};   // 例如 { 'A': 2, 'B': 3, 'C': 4 }
+
   for (var r = 0; r < Math.min(5, rows.length); r++) {
     var row = rows[r];
-    qCol = -1; aCol = -1;
     for (var c = 0; c < row.length; c++) {
       var h = String(row[c] || '').trim();
-      if (/题目|问题|question|题干|试题/.test(h)) qCol = c;
-      if (/答案|answer|正确|选项/.test(h)) aCol = c;
+
+      // 题干列
+      if (/题目|问题|question|题干|试题/.test(h) && qCol === -1) qCol = c;
+      // 答案列
+      if (/答案|answer|正确/.test(h) && aCol === -1) aCol = c;
+      // 选项列：匹配 “选项 A” “选项A” “选项  A” 等
+      var optMatch = h.match(/选项\s*([A-H])/i);
+      if (optMatch) {
+        var letter = optMatch[1].toUpperCase();
+        if (!(letter in optionCols)) {
+          optionCols[letter] = c;
+        }
+      }
     }
-    if (qCol !== -1 || aCol !== -1) {
+
+    // 如果找到了题干或答案或选项列，就认为这一行是标题行
+    if (qCol !== -1 || aCol !== -1 || Object.keys(optionCols).length > 0) {
       headerRowIndex = r;
       break;
     }
   }
 
-  // 2. 如果没有标题行，默认第0列题目，第1列答案
+  // 2. 如果没找到任何标题行，使用默认值（第0列题干，第1列答案，无选项）
   if (headerRowIndex === -1) {
-    headerRowIndex = -1; // 表示没有标题
     qCol = 0;
     aCol = 1;
   }
 
-  // 3. 数据起始行
+  // 3. 数据起始行（标题行的下一行）
   var startRow = headerRowIndex >= 0 ? headerRowIndex + 1 : 0;
 
-  // 4. 提取题目
+  // 4. 提取数据行
   var dataRows = rows.slice(startRow);
   return dataRows
     .filter(function(row) { return row[qCol] && String(row[qCol]).trim().length > 1; })
     .map(function(row) {
-      return makeQA(String(row[qCol]).trim(), String(row[aCol] || '').trim(), file.name);
+      // 构建选项数组（长度 8，下标 0 对应 A，1 对应 B，…）
+      var options = Array(8).fill('');
+      for (var letter in optionCols) {
+        var idx = letter.charCodeAt(0) - 65;   // A=0, B=1, ...
+        var colIdx = optionCols[letter];
+        var val = row[colIdx] ? String(row[colIdx]).trim() : '';
+        options[idx] = val;
+      }
+
+      return makeQA(
+        String(row[qCol]).trim(),
+        String(row[aCol] || '').trim(),
+        file.name,
+        options   // 传入选项数组
+      );
     });
 }
 

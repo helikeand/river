@@ -9,6 +9,18 @@ var AnswerSearch = (function() {
       fuseInstance = null;
       return;
     }
+    // ====== 格式化答案：如果有选项，把字母替换为“字母. 选项文字” ======
+function formatAnswer(item) {
+  var ans = item.answer;
+  // 只有当 item 有 options 数组，且答案是单个大写字母时才转换
+  if (item.options && item.options.length > 0 && /^[A-H]$/.test(ans)) {
+    var idx = ans.charCodeAt(0) - 65;
+    if (idx >= 0 && idx < item.options.length && item.options[idx].trim()) {
+      return ans + '. ' + item.options[idx].trim();
+    }
+  }
+  return ans;   // 没有选项或不是单字母，直接返回原答案
+}
     fuseInstance = new Fuse(questionCache, {
       keys: ['question'],
       threshold: 0.5,
@@ -73,7 +85,7 @@ var AnswerSearch = (function() {
       return {
         found: true,
         question: exact.item.question,
-        answer: exact.item.answer,
+        answer: formatAnswer(exact.item),
         confidence: exact.score,
         source: '精确匹配',
         candidates: []
@@ -87,14 +99,14 @@ var AnswerSearch = (function() {
       var rest = fuzzy.slice(1, 4).map(function(f) {
         return {
           question: f.item.question,
-          answer: f.item.answer,
+          answer: formatAnswer(f.item),
           confidence: f.score
         };
       });
       return {
         found: true,
         question: top.item.question,
-        answer: top.item.answer,
+        answer: formatAnswer(top.item),
         confidence: top.score,
         source: '模糊匹配',
         candidates: rest
@@ -108,7 +120,7 @@ var AnswerSearch = (function() {
         candidates: fuzzy.slice(0, 3).map(function(f) {
           return {
             question: f.item.question,
-            answer: f.item.answer,
+            answer: formatAnswer(f.item),
             confidence: f.score
           };
         }),
