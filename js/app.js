@@ -43,12 +43,68 @@ async function updateBankCount() {
 window.searchQuestion = async function(text) {
   var result = await AnswerSearch.search(text);
   var json = JSON.stringify(result);
-  // 同时通过 JsBridge 通知 Android（悬浮窗弹答案）
-  if (window.Android && window.Android.showAnswer) {
-    try { window.Android.showAnswer(json); } catch(e) {}
-  }
   return json;
 };
+
+// 搜索 + 自动在 WebView 中显示结果（分屏模式下使用）
+window.searchAndDisplay = async function(text) {
+  console.log('[searchAndDisplay] called with:', text.substring(0, 50));
+  try {
+    // 如果不在搜索页才切换
+    var searchView = document.getElementById('view-search');
+    if (searchView && !searchView.classList.contains('active')) {
+      if (typeof switchView === 'function') switchView('search');
+    }
+
+    // 填入搜索框（用户正在输入时不覆盖）
+    var input = document.getElementById('search-input');
+    if (input && document.activeElement !== input) {
+      input.value = text;
+    }
+
+    // 搜索
+    var result = await AnswerSearch.search(text);
+    console.log('[searchAndDisplay] result:', JSON.stringify(result).substring(0, 200));
+
+    // 显示结果
+    displaySearchResult(result);
+    return JSON.stringify(result);
+  } catch (e) {
+    console.error('[searchAndDisplay] error:', e);
+    return JSON.stringify({ found: false, error: e.message });
+  }
+};
+
+// 在 WebView 页面中渲染搜索结果
+function displaySearchResult(r) {
+  var div = document.getElementById('search-result');
+  var hint = document.getElementById('empty-hint');
+  if (!div) return;
+  if (hint) hint.style.display = 'none';
+
+  if (r.found) {
+    div.innerHTML = '<div class="result-card">' +
+      '<div class="match-q">📋 ' + escapeHtml(r.question) + '</div>' +
+      '<div class="match-a">' + escapeHtml(r.answer) + '</div>' +
+      '<div class="confidence">匹配度: ' + Math.round(r.confidence * 100) + '% | 来源: ' + escapeHtml(r.source) + '</div>' +
+      '</div>';
+  } else if (r.candidates && r.candidates.length > 0) {
+    var html = '<p style="margin-bottom:8px">未精确匹配，相似题目：</p><div class="candidate-list">';
+    for (var i = 0; i < r.candidates.length; i++) {
+      var c = r.candidates[i];
+      html += '<div class="candidate-item">' +
+        '<div class="c-q">' + escapeHtml(c.question) + '</div>' +
+        '<div class="c-a">答案: ' + escapeHtml(c.answer) + ' <span class="tag">' + Math.round(c.confidence * 100) + '%</span></div>' +
+        '</div>';
+    }
+    html += '</div>';
+    div.innerHTML = html;
+  } else if (r.error) {
+    div.innerHTML = '<p class="hint">搜索出错: ' + escapeHtml(r.error) + '</p>';
+  } else {
+    div.innerHTML = '<p class="hint">未找到匹配结果，可前往设置配置 AI 自动作答</p>';
+  }
+}
 
 // 判断是否在 Android 壳中（有真正的原生 JsBridge）
 window.isAndroidApp = function() {
@@ -142,6 +198,16 @@ function initSearchUI() {
   }
 
   btn.addEventListener('click', doSearch);
+
+  // 重置按钮：清空搜索框和结果
+  var resetBtn = document.getElementById('reset-btn');
+  if (resetBtn) {
+    resetBtn.addEventListener('click', function() {
+      input.value = '';
+      result.innerHTML = '';
+      hint.style.display = '';
+    });
+  }
 
   // Ctrl+Enter 快捷搜索
   input.addEventListener('keydown', function(e) {
