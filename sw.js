@@ -1,5 +1,5 @@
 // 缓存版本 → 每次更新代码时递增此数字
-const CACHE_NAME = 'auto-answer-v4';
+const CACHE_NAME = 'auto-answer-v5';
 
 const ASSETS = [
   './',
