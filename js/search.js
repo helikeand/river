@@ -2,6 +2,21 @@ var AnswerSearch = (function() {
   var fuseInstance = null;
   var questionCache = [];
 
+  // ====== 格式化答案：将字母替换为完整选项 ======
+  function formatAnswer(item) {
+    if (!item) return '';
+    var ans = item.answer;
+    // 只有题目包含选项数组，且答案是个单字母时，才转换成“字母. 选项文字”
+    if (item.options && item.options.length > 0 && /^[A-H]$/.test(ans)) {
+      var idx = ans.charCodeAt(0) - 65;  // A->0, B->1, ...
+      if (idx >= 0 && idx < item.options.length && item.options[idx] && item.options[idx].trim()) {
+        return ans + '. ' + item.options[idx].trim();
+      }
+    }
+    // 否则直接返回原答案
+    return ans;
+  }
+
   // ====== 初始化 Fuse.js 索引 ======
   async function rebuildIndex() {
     questionCache = await db.getAll();
@@ -9,18 +24,6 @@ var AnswerSearch = (function() {
       fuseInstance = null;
       return;
     }
-    // ====== 格式化答案：如果有选项，把字母替换为“字母. 选项文字” ======
-function formatAnswer(item) {
-  var ans = item.answer;
-  // 只有当 item 有 options 数组，且答案是单个大写字母时才转换
-  if (item.options && item.options.length > 0 && /^[A-H]$/.test(ans)) {
-    var idx = ans.charCodeAt(0) - 65;
-    if (idx >= 0 && idx < item.options.length && item.options[idx].trim()) {
-      return ans + '. ' + item.options[idx].trim();
-    }
-  }
-  return ans;   // 没有选项或不是单字母，直接返回原答案
-}
     fuseInstance = new Fuse(questionCache, {
       keys: ['question'],
       threshold: 0.5,
@@ -30,7 +33,7 @@ function formatAnswer(item) {
     });
   }
 
-  // ====== 预处理文本 ======
+  // ====== 预处理文本（去符号、去空格） ======
   function preprocess(text) {
     return text
       .replace(/[\s\n\r]+/g, ' ')
@@ -59,7 +62,7 @@ function formatAnswer(item) {
     return null;
   }
 
-  // ====== 模糊匹配 ======
+  // ====== 模糊匹配（Fuse.js） ======
   function fuzzyMatch(input) {
     if (!fuseInstance) return [];
     var results = fuseInstance.search(input, { limit: 5 });
@@ -71,7 +74,7 @@ function formatAnswer(item) {
     });
   }
 
-  // ====== 主搜索 ======
+  // ====== 主搜索函数 ======
   async function search(text) {
     if (!text || text.trim().length < 2) {
       return { found: false, candidates: [], aiAnswered: false };
@@ -85,7 +88,7 @@ function formatAnswer(item) {
       return {
         found: true,
         question: exact.item.question,
-        answer: formatAnswer(exact.item),
+        answer: formatAnswer(exact.item),       // ✅ 调用 formatAnswer
         confidence: exact.score,
         source: '精确匹配',
         candidates: []
@@ -99,28 +102,28 @@ function formatAnswer(item) {
       var rest = fuzzy.slice(1, 4).map(function(f) {
         return {
           question: f.item.question,
-          answer: formatAnswer(f.item),
+          answer: formatAnswer(f.item),         // ✅
           confidence: f.score
         };
       });
       return {
         found: true,
         question: top.item.question,
-        answer: formatAnswer(top.item),
+        answer: formatAnswer(top.item),         // ✅
         confidence: top.score,
         source: '模糊匹配',
         candidates: rest
       };
     }
 
-    // 3. 候选列表
+    // 3. 低分候选列表
     if (fuzzy.length > 0) {
       return {
         found: false,
         candidates: fuzzy.slice(0, 3).map(function(f) {
           return {
             question: f.item.question,
-            answer: formatAnswer(f.item),
+            answer: formatAnswer(f.item),       // ✅
             confidence: f.score
           };
         }),
