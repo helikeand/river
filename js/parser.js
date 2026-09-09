@@ -26,9 +26,106 @@ var Parser = (function() {
     return 'unknown';
   }
 
+  // ====== 平台题库（数字编号选项）格式检测 ======
+  var PLATFORM_OPTION_HEADER_RE = /^选项\s*([1-6])$/;
+
+  function detectPlatformFormat(rows) {
+    var limit = Math.min(5, rows.length);
+    for (var r = 0; r < limit; r++) {
+      var row = rows[r];
+      var qCol = -1, aCol = -1, optionCols = {};
+      for (var c = 0; c < row.length; c++) {
+        var h = String(row[c] || '').trim();
+        if (/问题内容/.test(h) && qCol === -1) qCol = c;
+        if (/答案|answer|正确/.test(h) && aCol === -1) aCol = c;
+        var m = PLATFORM_OPTION_HEADER_RE.exec(h);
+        if (m) optionCols[m[1]] = c;
+      }
+      if (qCol !== -1 && aCol !== -1 && Object.keys(optionCols).length >= 1) {
+        return { headerRowIndex: r, qCol: qCol, aCol: aCol, optionCols: optionCols };
+      }
+    }
+    return null;
+  }
+
+  var ANSWER_REFS_RE = /^选项\s*([1-6])(?:\s*[/、，,]\s*([1-6]))*$/;
+
+  function cleanText(s) {
+    return String(s || '').replace(/\s+/g, ' ').trim();
+  }
+
+  // 取一行的非空选项文字（按 1→6 顺序）
+  function buildOptions(row, header) {
+    var opts = [];
+    for (var n = 1; n <= 6; n++) {
+      var colIdx = header.optionCols[String(n)];
+      if (colIdx === undefined) continue;
+      var text = cleanText(row[colIdx]);
+      if (text) opts.push(text);
+    }
+    return opts;
+  }
+
+  function parsePlatformRows(rows, header, sourceName) {
+    var results = [];
+    var startRow = header.headerRowIndex + 1;
+    for (var r = startRow; r < rows.length; r++) {
+      var row = rows[r];
+      var question = cleanText(row[header.qCol]);
+      if (!question) continue;
+
+      var answerRaw = cleanText(row[header.aCol]);
+      if (!answerRaw) continue;
+
+      // 是非题：对/错 → √/×（走 makeQA 的 normalizeAnswer/guessType）
+      if (/^(对|正确|√|✓|true|yes|错|错误|×|✗|false|no)$/i.test(answerRaw)) {
+        results.push(makeQA(question, answerRaw, sourceName));
+        continue;
+      }
+
+      // 选择题：选项N 或 选项1/2/3
+      var refs = ANSWER_REFS_RE.exec(answerRaw);
+      if (refs) {
+        // exec 的 match 数组对重复捕获组只保留最后一次捕获且长度固定，
+        // 必须用 split 提取全部序号；ANSWER_REFS_RE 仅做形状校验
+        var nums = answerRaw.replace(/^选项\s*/, '').split(/\s*[/、，,]\s*/)
+          .filter(function(n) { return /^[1-6]$/.test(n); });
+        var texts = [];
+        var allResolved = true;
+        for (var i = 0; i < nums.length; i++) {
+          var colIdx = header.optionCols[nums[i]];
+          var text = (colIdx !== undefined) ? cleanText(row[colIdx]) : '';
+          if (text) {
+            texts.push(text);
+          } else {
+            allResolved = false;
+          }
+        }
+        if (allResolved && texts.length > 0) {
+          // 文字答案不经过 normalizeAnswer，避免选项文字被误转 √×
+          results.push({
+            question: question,
+            answer: texts.join('\n'),
+            type: 'choice',
+            options: buildOptions(row, header),
+            source: sourceName
+          });
+          continue;
+        }
+        // 兜底：引用的选项文字缺失，保留原始答案字符串
+        results.push(makeQA(question, answerRaw, sourceName));
+        continue;
+      }
+
+      // 其他答案格式原样保留
+      results.push(makeQA(question, answerRaw, sourceName, buildOptions(row, header)));
+    }
+    return results;
+  }
+
   // ====== 通用文本解析（Word/PDF 等） ======
   function parseTextToQA(text, sourceName) {
-    var lines = text.split(/\n/).map(function(l) { return l.trim(); }).filter(function(l) { return l.length > 0; });
+    var lines = text.split(/\n/).map(function(l) { return l.trim(); }).filter(function(l) { return l.length > 5; });
     var results = [];
 
     function isMarkedAnswerLine(line) {
@@ -62,6 +159,13 @@ var Parser = (function() {
         continue;
       }
 
+      // 模式2b（旧格式恢复）：N. 题干 A（行末裸答案标记，无括号）
+      var m2b = /^\s*(\d+)[\.、\)]\s*(.+?)\s+([A-D√×对错正确错误])\s*$/.exec(line);
+      if (m2b) {
+        results.push(makeQA(m2b[1] + '. ' + m2b[2].trim(), m2b[3], sourceName));
+        continue;
+      }
+
       // 模式4+5：标注正确选项的行
       if (isMarkedAnswerLine(line)) {
         var letter = extractOptionLetter(line);
@@ -91,7 +195,7 @@ var Parser = (function() {
     // 兜底：纯答案序列
     if (results.length === 0) {
       for (var j = 0; j < lines.length; j++) {
-        var m6 = /^\s*(\d+)\s*[\.、\)]\s*([A-Da-d√×对错正确错误])/.exec(lines[j]);
+        var m6 = /^\s*(\d+)\s*[\.、\)]\s*([A-Da-d√×对错正确错误])\s*$/.exec(lines[j]);
         if (m6) {
           results.push(makeQA('第' + m6[1] + '题', m6[2], sourceName));
         }
@@ -133,6 +237,12 @@ var Parser = (function() {
 
     if (rows.length === 0) return [];
 
+    // 平台新格式（数字编号选项）优先分派，未命中走原逻辑
+    var platformHeader = detectPlatformFormat(rows);
+    if (platformHeader) {
+      return parsePlatformRows(rows, platformHeader, file.name);
+    }
+
     var headerRowIndex = -1;
     var qCol = -1, aCol = -1;
     var optionCols = {};
@@ -155,10 +265,8 @@ var Parser = (function() {
       }
     }
 
-    if (headerRowIndex === -1) {
-      qCol = 0;
-      aCol = 1;
-    }
+    if (qCol === -1) qCol = 0;
+    if (aCol === -1) aCol = 1;
 
     var startRow = headerRowIndex >= 0 ? headerRowIndex + 1 : 0;
     var dataRows = rows.slice(startRow);
@@ -216,7 +324,9 @@ var Parser = (function() {
 
   return {
     parseFile: parseFile,
-    parseTextToQA: parseTextToQA
+    parseTextToQA: parseTextToQA,
+    _detectPlatformFormat: detectPlatformFormat,
+    _parsePlatformRows: parsePlatformRows
   };
 
 })();
